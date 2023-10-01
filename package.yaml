@@ -19,8 +19,21 @@ extra-source-files:
 # common to point users to the README.md file.
 description:         Please see the README on GitHub at <https://github.com/EarlPitts/ci-server#readme>
 
+default-extensions:
+- OverloadedStrings
+- ImportQualifiedPost
+- OverloadedRecordDot
+- BlockArguments
+
 dependencies:
 - base >= 4.7 && < 5
+- rio
+- http-conduit
+- http-client
+- network
+- aeson
+- hspec
+- typed-process
 
 ghc-options:
 - -Wall
@@ -34,9 +47,6 @@ ghc-options:
 - -Wredundant-constraints
 
 library:
-  default-extensions:
-    - OverloadedStrings
-    - ImportQualifiedPost
   source-dirs: src
 
 executables:
@@ -49,11 +59,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - ci-server
-    - rio
-    - http-conduit
-    - http-client
-    - network
-    - aeson
 
 tests:
   ci-server-test:
