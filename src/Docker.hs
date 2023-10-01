@@ -28,11 +28,16 @@ data CreateContainerOptions = CreateContainerOptions
 newtype ContainerId = ContainerId Text
   deriving (Eq, Show)
 
+data Service = Service
+  { createContainer :: CreateContainerOptions -> IO ContainerId,
+    startContainer :: ContainerId -> IO ()
+  }
+
 containerIdToText :: ContainerId -> Text
 containerIdToText (ContainerId c) = c
 
-createContainer :: CreateContainerOptions -> IO ContainerId
-createContainer options = do
+createContainer_ :: CreateContainerOptions -> IO ContainerId
+createContainer_ options = do
   manager <- Socket.newManager "/var/run/docker.sock"
 
   let img = imageToText (image options)
@@ -70,19 +75,29 @@ parseResponse res parser = do
     Left e -> throwString e
     Right status -> pure status
 
-startContainer :: ContainerId -> IO ()
-startContainer container = do
+startContainer_ :: ContainerId -> IO ()
+startContainer_ container = do
   manager <- Socket.newManager "/var/run/docker.sock"
 
-  let path = "/v1.40/containers/" <>
-             containerIdToText container <>
-             "/start"
+  let path =
+        "/v1.40/containers/"
+          <> containerIdToText container
+          <> "/start"
 
-  let req = HTTP.defaultRequest
+  let req =
+        HTTP.defaultRequest
           & HTTP.setRequestManager manager
           & HTTP.setRequestPath (encodeUtf8 path)
           & HTTP.setRequestMethod "POST"
 
-  traceShowIO req
+  -- traceShowIO req
 
   void $ HTTP.httpBS req
+
+createService :: IO Service
+createService = do
+  pure
+    Service
+      { createContainer = createContainer_,
+        startContainer = startContainer_
+      }

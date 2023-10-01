@@ -1,3 +1,6 @@
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE FlexibleContexts #-}
+
 module Core where
 
 import Docker qualified
@@ -67,16 +70,20 @@ buildHasNextStep build =
   where
     allSucceeded = List.all ((==) StepSucceeded) (completedSteps build)
     nextStep = List.find f (steps . pipeline $ build)
-    f step = not $ Map.member (name step) (completedSteps build)
+    f step = not $ Map.member step.name (completedSteps build)
 
-progress :: Build -> IO Build
-progress build =
+progress :: Docker.Service -> Build -> IO Build
+progress docker build =
   case state build of
     BuildReady ->
       case buildHasNextStep build of
         Left result ->
           pure $ build {state = BuildFinished result}
         Right step -> do
+          let options = Docker.CreateContainerOptions (image step)
+          container <- docker.createContainer options
+          docker.startContainer container
+
           let s = BuildRunningState {step = name step}
           pure $ build {state = BuildRunning s}
     BuildRunning state -> do
