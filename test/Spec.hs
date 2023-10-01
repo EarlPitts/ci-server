@@ -1,9 +1,16 @@
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Main where
 
 import Core
 import Docker qualified
 import RIO
+import RIO.Map as Map
 import RIO.NonEmpty.Partial qualified as NonEmpty.Partial
+import System.Process.Typed qualified as Process
+import Test.Hspec
 
 -- Helper functions
 makeStep :: Text -> Text -> [Text] -> Step
@@ -34,5 +41,29 @@ testBuild =
       completedSteps = mempty
     }
 
+runBuild :: Docker.Service -> Build -> IO Build
+runBuild docker build = do
+  newBuild <- Core.progress docker build
+  case newBuild.state of
+    BuildFinished _ ->
+      pure newBuild
+    _ -> do
+      threadDelay (1 * 1000 * 1000) -- 1 sec
+      runBuild docker newBuild
+
+testRunSuccess :: Docker.Service -> IO ()
+testRunSuccess docker = do
+  result <- runBuild docker testBuild
+  result.state `shouldBe` BuildFinished BuildSucceeded
+  Map.elems result.completedSteps `shouldBe` [StepSucceeded, StepSucceeded]
+
+cleanupDocker :: IO ()
+cleanupDocker = void do
+  Process.runProcess "docker rm -f $(docker ps -aq --filter \"label=quad\")"
+
 main :: IO ()
-main = pure ()
+main = hspec do
+  docker <- runIO Docker.createService
+  beforeAll cleanupDocker $ describe "ci-server" do
+    it "should run a build (success)" do
+      testRunSuccess docker
