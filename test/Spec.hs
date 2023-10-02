@@ -9,6 +9,7 @@ import Docker qualified
 import RIO
 import RIO.Map as Map
 import RIO.NonEmpty.Partial qualified as NonEmpty.Partial
+import Runner qualified
 import System.Process.Typed qualified as Process
 import Test.Hspec
 
@@ -41,21 +42,19 @@ testBuild =
       completedSteps = mempty
     }
 
-runBuild :: Docker.Service -> Build -> IO Build
-runBuild docker build = do
-  newBuild <- Core.progress docker build
-  case newBuild.state of
-    BuildFinished _ ->
-      pure newBuild
-    _ -> do
-      threadDelay (1 * 1000 * 1000) -- 1 sec
-      runBuild docker newBuild
+testRunSuccess :: Runner.Service -> IO ()
+testRunSuccess runner = do
+  build <-
+    runner.prepareBuild $
+      makePipeline
+        [ makeStep "First step" "alpine" ["date"],
+          makeStep "Second step" "alpine" ["uname -r"]
+        ]
+  result <- runner.runBuild build
 
-testRunSuccess :: Docker.Service -> IO ()
-testRunSuccess docker = do
-  result <- runBuild docker testBuild
   result.state `shouldBe` BuildFinished BuildSucceeded
-  Map.elems result.completedSteps `shouldBe` [StepSucceeded, StepSucceeded]
+  Map.elems result.completedSteps
+    `shouldBe` [StepSucceeded, StepSucceeded]
 
 cleanupDocker :: IO ()
 cleanupDocker = void do
@@ -64,6 +63,7 @@ cleanupDocker = void do
 main :: IO ()
 main = hspec do
   docker <- runIO Docker.createService
+  runner <- runIO $ Runner.createService docker
   beforeAll cleanupDocker $ describe "ci-server" do
     it "should run a build (success)" do
-      testRunSuccess docker
+      testRunSuccess runner
