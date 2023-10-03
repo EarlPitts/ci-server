@@ -1,5 +1,5 @@
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module Core where
 
@@ -68,24 +68,24 @@ buildHasNextStep build =
       Nothing -> Left BuildSucceeded
     else Left BuildFailed
   where
-    allSucceeded = List.all ((==) StepSucceeded) (completedSteps build)
+    allSucceeded = List.all (StepSucceeded ==) (completedSteps build)
     nextStep = List.find f (steps . pipeline $ build)
     f step = not $ Map.member step.name (completedSteps build)
 
 progress :: Docker.Service -> Build -> IO Build
 progress docker build =
-  case state build of
+  case build.state of
     BuildReady ->
       case buildHasNextStep build of
         Left result ->
           pure $ build {state = BuildFinished result}
         Right step -> do
-          let options = Docker.CreateContainerOptions (image step)
+          let options = Docker.CreateContainerOptions step.image
           container <- docker.createContainer options
           docker.startContainer container
 
-          let s = BuildRunningState {step = name step}
-          pure $ build {state = BuildRunning s}
+          let state = BuildRunningState {step = step.name}
+          pure $ build {state = BuildRunning state}
     BuildRunning state -> do
       let exit = Docker.ContainerExitCode 0
           result = exitCodeToStepResult exit
@@ -93,6 +93,6 @@ progress docker build =
         build
           { state = BuildReady,
             completedSteps =
-              Map.insert (step state) result (completedSteps build)
+              Map.insert state.step result build.completedSteps
           }
     BuildFinished _ -> pure build
