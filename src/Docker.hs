@@ -15,6 +15,12 @@ newtype Image = Image Text
 newtype ContainerExitCode = ContainerExitCode Int
   deriving (Eq, Show)
 
+data ContainerStatus
+  = ContainerRunning
+  | ContainerExited ContainerExitCode
+  | ContainerOther Text
+  deriving (Eq, Show)
+
 imageToText :: Image -> Text
 imageToText (Image img) = img
 
@@ -30,8 +36,18 @@ newtype ContainerId = ContainerId Text
 
 data Service = Service
   { createContainer :: CreateContainerOptions -> IO ContainerId,
-    startContainer :: ContainerId -> IO ()
+    startContainer :: ContainerId -> IO (),
+    containerStatus :: ContainerId -> IO ContainerStatus
   }
+
+createService :: IO Service
+createService = do
+  pure
+    Service
+      { createContainer = createContainer_,
+        startContainer = startContainer_,
+        containerStatus = undefined -- TODO
+      }
 
 containerIdToText :: ContainerId -> Text
 containerIdToText (ContainerId c) = c
@@ -93,11 +109,3 @@ startContainer_ container = do
   -- traceShowIO req
 
   void $ HTTP.httpBS req
-
-createService :: IO Service
-createService = do
-  pure
-    Service
-      { createContainer = createContainer_,
-        startContainer = startContainer_
-      }
