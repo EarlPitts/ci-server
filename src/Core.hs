@@ -104,7 +104,8 @@ progress docker build =
           pure
             build
               { completedSteps =
-                  Map.insert state.step result build.completedSteps
+                  Map.insert state.step result build.completedSteps,
+                  state = BuildReady
               }
         Docker.ContainerOther other -> do
           let s = BuildUnexpectedState other
