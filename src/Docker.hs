@@ -21,6 +21,8 @@ data ContainerStatus
   | ContainerOther Text
   deriving (Eq, Show)
 
+type RequestBuilder = Text -> HTTP.Request
+
 imageToText :: Image -> Text
 imageToText (Image img) = img
 
@@ -42,20 +44,25 @@ data Service = Service
 
 createService :: IO Service
 createService = do
+  manager <- Socket.newManager "/var/run/docker.sock"
+
+  let makeReq :: RequestBuilder
+      makeReq path =
+        HTTP.defaultRequest
+          & HTTP.setRequestPath (encodeUtf8 $ "/v1.40" <> path)
+          & HTTP.setRequestManager manager
   pure
     Service
-      { createContainer = createContainer_,
-        startContainer = startContainer_,
+      { createContainer = createContainer_ makeReq,
+        startContainer = startContainer_ makeReq,
         containerStatus = undefined -- TODO
       }
 
 containerIdToText :: ContainerId -> Text
 containerIdToText (ContainerId c) = c
 
-createContainer_ :: CreateContainerOptions -> IO ContainerId
-createContainer_ options = do
-  manager <- Socket.newManager "/var/run/docker.sock"
-
+createContainer_ :: RequestBuilder -> CreateContainerOptions -> IO ContainerId
+createContainer_ makeReq options = do
   let img = imageToText (image options)
   let body =
         Aeson.object
@@ -69,10 +76,7 @@ createContainer_ options = do
         cId <- o .: "Id"
         pure $ ContainerId cId
 
-  let req =
-        HTTP.defaultRequest
-          & HTTP.setRequestManager manager
-          & HTTP.setRequestPath "/v1.40/containers/create"
+  let req = makeReq "/containers/create"
           & HTTP.setRequestMethod "POST"
           & HTTP.setRequestBodyJSON body
 
@@ -91,21 +95,14 @@ parseResponse res parser = do
     Left e -> throwString e
     Right status -> pure status
 
-startContainer_ :: ContainerId -> IO ()
-startContainer_ container = do
-  manager <- Socket.newManager "/var/run/docker.sock"
-
+startContainer_ :: RequestBuilder -> ContainerId -> IO ()
+startContainer_ makeReq container = do
   let path =
         "/v1.40/containers/"
           <> containerIdToText container
           <> "/start"
 
-  let req =
-        HTTP.defaultRequest
-          & HTTP.setRequestManager manager
-          & HTTP.setRequestPath (encodeUtf8 path)
+  let req = makeReq path
           & HTTP.setRequestMethod "POST"
-
-  -- traceShowIO req
 
   void $ HTTP.httpBS req
