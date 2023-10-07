@@ -67,6 +67,17 @@ testRunFailure runner = do
   Map.elems result.completedSteps
     `shouldBe` [StepFailed (Docker.ContainerExitCode 1)]
 
+testSharedWorkspace :: Runner.Service -> IO ()
+testSharedWorkspace runner = do
+  build <- runner.prepareBuild $ makePipeline
+              [ makeStep "Create file" "alpine" ["touch test"]
+              , makeStep "Check file" "alpine"  ["test -e test"]
+              ]
+  
+  result <- runner.runBuild build
+  result.state `shouldBe` BuildFinished BuildSucceeded
+  Map.elems result.completedSteps `shouldBe` [StepSucceeded, StepSucceeded]
+
 cleanupDocker :: IO ()
 cleanupDocker = void do
   Process.runProcess "docker rm -f $(docker ps -aq --filter \"label=quad\")"
@@ -80,3 +91,5 @@ main = hspec do
       testRunSuccess runner
     it "should run a build (failure)" do
       testRunFailure runner
+    it "should share a workspace between steps" do
+      testSharedWorkspace runner
