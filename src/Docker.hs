@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module Docker where
 
@@ -30,7 +31,8 @@ exitCodeToInt :: ContainerExitCode -> Int
 exitCodeToInt (ContainerExitCode code) = code
 
 data CreateContainerOptions = CreateContainerOptions
-  { image :: Image
+  { image :: Image,
+    script :: Text
   }
 
 newtype ContainerId = ContainerId Text
@@ -63,20 +65,22 @@ containerIdToText (ContainerId c) = c
 
 createContainer_ :: RequestBuilder -> CreateContainerOptions -> IO ContainerId
 createContainer_ makeReq options = do
-  let img = imageToText (image options)
+  let img = imageToText options.image
   let body =
         Aeson.object
           [ ("Image", Aeson.toJSON img),
             ("Tty", Aeson.toJSON True),
             ("Labels", Aeson.object [("quad", "")]),
-            ("Cmd", "echo hello"),
+            ("Cmd", "echo \"$QUAD_SCRIPT\" | /bin/sh"),
+            ("Env", Aeson.toJSON ["QUAD_SCRIPT=" <> options.script]),
             ("Entrypoint", Aeson.toJSON [Aeson.String "/bin/sh", "-c"])
           ]
   let parser = Aeson.withObject "create-container" $ \o -> do
         cId <- o .: "Id"
         pure $ ContainerId cId
 
-  let req = makeReq "/containers/create"
+  let req =
+        makeReq "/containers/create"
           & HTTP.setRequestMethod "POST"
           & HTTP.setRequestBodyJSON body
 
@@ -102,13 +106,14 @@ containerStatus_ makeReq container = do
         status <- state .: "Status"
         case status of
           "running" -> pure ContainerRunning
-          "exited"  -> do
+          "exited" -> do
             code <- state .: "ExitCode"
             pure $ ContainerExited (ContainerExitCode code)
           other -> pure $ ContainerOther other
 
-  let req = makeReq
-          $ "/containers/" <> containerIdToText container <> "/json"
+  let req =
+        makeReq $
+          "/containers/" <> containerIdToText container <> "/json"
 
   res <- HTTP.httpBS req
   parseResponse res parser
@@ -120,7 +125,8 @@ startContainer_ makeReq container = do
           <> containerIdToText container
           <> "/start"
 
-  let req = makeReq path
+  let req =
+        makeReq path
           & HTTP.setRequestMethod "POST"
 
   void $ HTTP.httpBS req

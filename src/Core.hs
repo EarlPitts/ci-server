@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Core where
 
@@ -7,6 +8,8 @@ import Docker qualified
 import RIO
 import RIO.List qualified as List
 import RIO.Map qualified as Map
+import RIO.NonEmpty as NonEmpty
+import RIO.Text as Text
 
 data Pipeline = Pipeline
   { steps :: NonEmpty Step
@@ -82,7 +85,11 @@ progress docker build =
         Left result ->
           pure $ build {state = BuildFinished result}
         Right step -> do
-          let options = Docker.CreateContainerOptions step.image
+          let script =
+                Text.unlines $
+                  ["set -ex"] <> NonEmpty.toList step.commands
+          let options =
+                Docker.CreateContainerOptions step.image script
           container <- docker.createContainer options
           docker.startContainer container
 
@@ -105,7 +112,7 @@ progress docker build =
             build
               { completedSteps =
                   Map.insert state.step result build.completedSteps,
-                  state = BuildReady
+                state = BuildReady
               }
         Docker.ContainerOther other -> do
           let s = BuildUnexpectedState other
