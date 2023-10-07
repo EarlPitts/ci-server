@@ -16,6 +16,9 @@ newtype Image = Image Text
 newtype ContainerExitCode = ContainerExitCode Int
   deriving (Eq, Show)
 
+newtype Volume = Volume Text
+  deriving (Eq, Show)
+
 data ContainerStatus
   = ContainerRunning
   | ContainerExited ContainerExitCode
@@ -30,6 +33,9 @@ imageToText (Image img) = img
 exitCodeToInt :: ContainerExitCode -> Int
 exitCodeToInt (ContainerExitCode code) = code
 
+volumeToText :: Volume -> Text
+volumeToText (Volume v) = v
+
 data CreateContainerOptions = CreateContainerOptions
   { image :: Image,
     script :: Text
@@ -41,7 +47,8 @@ newtype ContainerId = ContainerId Text
 data Service = Service
   { createContainer :: CreateContainerOptions -> IO ContainerId,
     startContainer :: ContainerId -> IO (),
-    containerStatus :: ContainerId -> IO ContainerStatus
+    containerStatus :: ContainerId -> IO ContainerStatus,
+    createVolume :: IO Volume
   }
 
 createService :: IO Service
@@ -57,7 +64,8 @@ createService = do
     Service
       { createContainer = createContainer_ makeReq,
         startContainer = startContainer_ makeReq,
-        containerStatus = containerStatus_ makeReq
+        containerStatus = containerStatus_ makeReq,
+        createVolume = createVolume_ makeReq
       }
 
 containerIdToText :: ContainerId -> Text
@@ -130,3 +138,20 @@ startContainer_ makeReq container = do
           & HTTP.setRequestMethod "POST"
 
   void $ HTTP.httpBS req
+
+createVolume_ :: RequestBuilder -> IO Volume
+createVolume_ makeReq = do
+  let body = Aeson.object
+              [ ("Labels", Aeson.object [("quad", "")])
+              ]
+
+  let req = makeReq "/volumes/create"
+          & HTTP.setRequestMethod "POST"
+          & HTTP.setRequestBodyJSON body
+
+  let parser = Aeson.withObject "create-volume" $ \o -> do
+        name <- o .: "Name"
+        pure $ Volume name
+
+  res <- HTTP.httpBS req
+  parseResponse res parser

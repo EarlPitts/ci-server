@@ -21,11 +21,13 @@ createService docker = do
 
 prepareBuild_ :: Docker.Service -> Pipeline -> IO Build
 prepareBuild_ docker pipeline = do
+  volume <- docker.createVolume
   pure
     Build
       { pipeline = pipeline,
         state = BuildReady,
-        completedSteps = mempty
+        completedSteps = mempty,
+        volume = volume
       }
 
 runBuild_ :: Docker.Service -> Build -> IO Build
