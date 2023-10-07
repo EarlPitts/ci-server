@@ -81,6 +81,7 @@ testSharedWorkspace runner = do
 cleanupDocker :: IO ()
 cleanupDocker = void do
   Process.runProcess "docker rm -f $(docker ps -aq --filter \"label=quad\")"
+  Process.runProcess "docker volume rm -f $(docker volume ls -q --filter \"label=quad\")"
 
 main :: IO ()
 main = hspec do

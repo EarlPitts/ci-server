@@ -1,5 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Docker where
 
@@ -38,7 +38,8 @@ volumeToText (Volume v) = v
 
 data CreateContainerOptions = CreateContainerOptions
   { image :: Image,
-    script :: Text
+    script :: Text,
+    volume :: Volume
   }
 
 newtype ContainerId = ContainerId Text
@@ -73,13 +74,17 @@ containerIdToText (ContainerId c) = c
 
 createContainer_ :: RequestBuilder -> CreateContainerOptions -> IO ContainerId
 createContainer_ makeReq options = do
-  let img = imageToText options.image
+  let image = imageToText options.image
+  let bind = volumeToText options.volume <> ":/app"
+
   let body =
         Aeson.object
-          [ ("Image", Aeson.toJSON img),
+          [ ("Image", Aeson.toJSON image),
             ("Tty", Aeson.toJSON True),
             ("Labels", Aeson.object [("quad", "")]),
             ("Cmd", "echo \"$QUAD_SCRIPT\" | /bin/sh"),
+            ("WorkingDir", "/app"),
+            ("HostConfig", Aeson.object [("Binds", Aeson.toJSON [bind])]),
             ("Env", Aeson.toJSON ["QUAD_SCRIPT=" <> options.script]),
             ("Entrypoint", Aeson.toJSON [Aeson.String "/bin/sh", "-c"])
           ]
@@ -141,11 +146,13 @@ startContainer_ makeReq container = do
 
 createVolume_ :: RequestBuilder -> IO Volume
 createVolume_ makeReq = do
-  let body = Aeson.object
-              [ ("Labels", Aeson.object [("quad", "")])
-              ]
+  let body =
+        Aeson.object
+          [ ("Labels", Aeson.object [("quad", "")])
+          ]
 
-  let req = makeReq "/volumes/create"
+  let req =
+        makeReq "/volumes/create"
           & HTTP.setRequestMethod "POST"
           & HTTP.setRequestBodyJSON body
 
