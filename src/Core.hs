@@ -1,15 +1,19 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 
 module Core where
 
+import Data.Time.Clock.POSIX qualified as Time
 import Docker qualified
 import RIO
 import RIO.List qualified as List
 import RIO.Map qualified as Map
 import RIO.NonEmpty as NonEmpty
-import RIO.Text as Text
+import RIO.Text as Text hiding (concat)
 
 data Pipeline = Pipeline
   { steps :: NonEmpty Step
@@ -87,8 +91,9 @@ progress docker build =
           pure $ build {state = BuildFinished result}
         Right step -> do
           let script =
-                Text.unlines $
-                  ["set -ex"] <> NonEmpty.toList step.commands
+                Text.unlines
+                  $ ["set -ex"]
+                  <> NonEmpty.toList step.commands
           let options =
                 Docker.CreateContainerOptions step.image script build.volume
           container <- docker.createContainer options
@@ -119,3 +124,82 @@ progress docker build =
           let s = BuildUnexpectedState other
           pure build {state = BuildFinished s}
     BuildFinished _ -> pure build
+
+-- Logs
+
+type LogCollection = Map StepName CollectionStatus
+
+data CollectionStatus
+  = CollectionReady
+  | CollectingLogs Docker.ContainerId Time.POSIXTime
+  | CollectionFinished
+  deriving (Eq, Show)
+
+data Log = Log
+  { output :: ByteString,
+    step :: StepName
+  }
+  deriving (Eq, Show)
+
+initLogCollection :: Pipeline -> LogCollection
+initLogCollection pipeline =
+  Map.fromList $ NonEmpty.toList steps
+  where
+    steps = pipeline.steps <&> \step -> (step.name, CollectionReady)
+
+updateCollection ::
+  BuildState ->
+  Time.POSIXTime ->
+  LogCollection ->
+  LogCollection
+updateCollection state lastCollection =
+  Map.mapWithKey f
+  where
+    update step since nextState =
+      case state of
+        BuildRunning state ->
+          if state.step == step
+            then CollectingLogs state.container since
+            else nextState
+        _ -> nextState
+
+    f step = \case
+      CollectionReady ->
+        update step 0 CollectionReady
+      CollectingLogs _ _ ->
+        update step lastCollection CollectionFinished
+      CollectionFinished ->
+        CollectionFinished
+
+runCollection ::
+  Docker.Service ->
+  Time.POSIXTime ->
+  LogCollection ->
+  IO [Log]
+runCollection docker collectUntil collection = do
+  logs <- Map.traverseWithKey f collection
+  pure $ concat (Map.elems logs)
+  where
+    f step = \case
+      CollectionReady -> pure []
+      CollectionFinished -> pure []
+      CollectingLogs container since -> do
+        let options =
+              Docker.FetchLogsOptions
+                { container = container,
+                  since = since,
+                  until = collectUntil
+                }
+        output <- docker.fetchLogs options
+        pure [Log {step = step, output = output}]
+
+collectLogs ::
+  Docker.Service ->
+  LogCollection ->
+  Build ->
+  IO (LogCollection, [Log])
+collectLogs docker collection build = do
+  now <- Time.getPOSIXTime
+  logs <- runCollection docker now collection
+  let newCollection = updateCollection build.state now collection
+  pure (newCollection, logs)

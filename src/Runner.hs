@@ -7,8 +7,12 @@ import Docker qualified
 import RIO
 
 data Service = Service
-  { runBuild :: Build -> IO Build,
+  { runBuild :: Hooks -> Build -> IO Build,
     prepareBuild :: Pipeline -> IO Build
+  }
+
+data Hooks = Hooks
+  { logCollected :: Log -> IO ()
   }
 
 createService :: Docker.Service -> IO Service
@@ -30,12 +34,12 @@ prepareBuild_ docker pipeline = do
         volume = volume
       }
 
-runBuild_ :: Docker.Service -> Build -> IO Build
-runBuild_ docker build = do
+runBuild_ :: Docker.Service -> Hooks -> Build -> IO Build
+runBuild_ docker hooks build = do
   newBuild <- Core.progress docker build
   case newBuild.state of
     BuildFinished _ ->
       pure newBuild
     _ -> do
       threadDelay (1 * 1000 * 1000)
-      runBuild_ docker newBuild
+      runBuild_ docker hooks newBuild

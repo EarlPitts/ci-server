@@ -6,6 +6,7 @@ module Docker where
 import Data.Aeson ((.:))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Types as Aeson.Types
+import Data.Time.Clock.POSIX qualified as Time
 import Network.HTTP.Simple qualified as HTTP
 import RIO
 import Socket qualified
@@ -45,11 +46,18 @@ data CreateContainerOptions = CreateContainerOptions
 newtype ContainerId = ContainerId Text
   deriving (Eq, Show)
 
+data FetchLogsOptions = FetchLogsOptions
+  { container :: ContainerId,
+    since :: Time.POSIXTime,
+    until :: Time.POSIXTime
+  }
+
 data Service = Service
   { createContainer :: CreateContainerOptions -> IO ContainerId,
     startContainer :: ContainerId -> IO (),
     containerStatus :: ContainerId -> IO ContainerStatus,
-    createVolume :: IO Volume
+    createVolume :: IO Volume,
+    fetchLogs :: FetchLogsOptions -> IO ByteString
   }
 
 createService :: IO Service
@@ -66,7 +74,8 @@ createService = do
       { createContainer = createContainer_ makeReq,
         startContainer = startContainer_ makeReq,
         containerStatus = containerStatus_ makeReq,
-        createVolume = createVolume_ makeReq
+        createVolume = createVolume_ makeReq,
+        fetchLogs = \_ -> undefined -- TODO
       }
 
 containerIdToText :: ContainerId -> Text
