@@ -11,7 +11,7 @@ import Network.HTTP.Simple qualified as HTTP
 import RIO
 import Socket qualified
 
-newtype Image = Image Text
+data Image = Image { name :: Text, tag :: Text }
   deriving (Eq, Show)
 
 newtype ContainerExitCode = ContainerExitCode Int
@@ -29,7 +29,7 @@ data ContainerStatus
 type RequestBuilder = Text -> HTTP.Request
 
 imageToText :: Image -> Text
-imageToText (Image img) = img
+imageToText image = image.name <> ":" <> image.tag
 
 exitCodeToInt :: ContainerExitCode -> Int
 exitCodeToInt (ContainerExitCode code) = code
@@ -48,16 +48,17 @@ newtype ContainerId = ContainerId Text
 
 data FetchLogsOptions = FetchLogsOptions
   { container :: ContainerId,
-    since :: Time.POSIXTime,
-    until :: Time.POSIXTime
+    since     :: Time.POSIXTime,
+    until     :: Time.POSIXTime
   }
 
 data Service = Service
   { createContainer :: CreateContainerOptions -> IO ContainerId,
-    startContainer :: ContainerId -> IO (),
+    startContainer  :: ContainerId -> IO (),
     containerStatus :: ContainerId -> IO ContainerStatus,
-    createVolume :: IO Volume,
-    fetchLogs :: FetchLogsOptions -> IO ByteString
+    createVolume    :: IO Volume,
+    fetchLogs       :: FetchLogsOptions -> IO ByteString,
+    pullImage       :: Image -> IO ()
   }
 
 createService :: IO Service
@@ -75,7 +76,8 @@ createService = do
         startContainer = startContainer_ makeReq,
         containerStatus = containerStatus_ makeReq,
         createVolume = createVolume_ makeReq,
-        fetchLogs = fetchLogs_ makeReq
+        fetchLogs = fetchLogs_ makeReq,
+        pullImage = pullImage_ makeReq
       }
 
 containerIdToText :: ContainerId -> Text
@@ -185,3 +187,15 @@ fetchLogs_ makeReq options = do
 
   res <- HTTP.httpBS $ makeReq url
   pure $ HTTP.getResponseBody res
+
+pullImage_ :: RequestBuilder -> Image -> IO ()
+pullImage_ makeReq image = do
+  let url = "/images/create?tag="
+          <> image.tag
+          <> "&fromImage="
+          <> image.name
+
+  let req = makeReq url
+          & HTTP.setRequestMethod "POST"
+
+  void $ HTTP.httpBS req
