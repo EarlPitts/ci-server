@@ -9,10 +9,22 @@ import Data.Aeson.Types as Aeson.Types
 import Data.Time.Clock.POSIX qualified as Time
 import Network.HTTP.Simple qualified as HTTP
 import RIO
+import RIO.Text as Text
+import RIO.Text.Partial as Text.Partial
 import Socket qualified
 
-data Image = Image { name :: Text, tag :: Text }
+data Image = Image {name :: Text, tag :: Text}
   deriving (Eq, Show)
+
+instance Aeson.FromJSON Image where
+  parseJSON = Aeson.withText "parse-image" $ \image -> do
+    case Text.Partial.splitOn ":" image of
+      [name] ->
+        pure $ Image { name = name, tag = "latest" }
+      [name, tag] ->
+        pure $ Image { name = name, tag = tag }
+      _ ->
+        fail $ "Image has too many colons " <> Text.unpack image
 
 newtype ContainerExitCode = ContainerExitCode Int
   deriving (Eq, Show)
@@ -48,17 +60,17 @@ newtype ContainerId = ContainerId Text
 
 data FetchLogsOptions = FetchLogsOptions
   { container :: ContainerId,
-    since     :: Time.POSIXTime,
-    until     :: Time.POSIXTime
+    since :: Time.POSIXTime,
+    until :: Time.POSIXTime
   }
 
 data Service = Service
   { createContainer :: CreateContainerOptions -> IO ContainerId,
-    startContainer  :: ContainerId -> IO (),
+    startContainer :: ContainerId -> IO (),
     containerStatus :: ContainerId -> IO ContainerStatus,
-    createVolume    :: IO Volume,
-    fetchLogs       :: FetchLogsOptions -> IO ByteString,
-    pullImage       :: Image -> IO ()
+    createVolume :: IO Volume,
+    fetchLogs :: FetchLogsOptions -> IO ByteString,
+    pullImage :: Image -> IO ()
   }
 
 createService :: IO Service
@@ -190,12 +202,14 @@ fetchLogs_ makeReq options = do
 
 pullImage_ :: RequestBuilder -> Image -> IO ()
 pullImage_ makeReq image = do
-  let url = "/images/create?tag="
+  let url =
+        "/images/create?tag="
           <> image.tag
           <> "&fromImage="
           <> image.name
 
-  let req = makeReq url
+  let req =
+        makeReq url
           & HTTP.setRequestMethod "POST"
 
   void $ HTTP.httpBS req

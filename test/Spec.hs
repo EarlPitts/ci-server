@@ -6,6 +6,7 @@
 module Main where
 
 import Core
+import Data.Yaml qualified as Yaml
 import Docker qualified
 import RIO
 import RIO.ByteString as ByteString
@@ -21,7 +22,7 @@ makeStep :: Text -> Text -> [Text] -> Step
 makeStep name image commands =
   Step
     { name = StepName name,
-      image = Docker.Image { name = image, tag = "latest" },
+      image = Docker.Image {name = image, tag = "latest"},
       commands = NonEmpty.Partial.fromList commands
     }
 
@@ -114,13 +115,22 @@ testImagePull :: Runner.Service -> IO ()
 testImagePull runner = do
   Process.readProcessStdout "docker rmi -f busybox"
 
-  build <- runner.prepareBuild $ makePipeline
-              [ makeStep "First step" "busybox" ["date"]
-              ]
+  build <-
+    runner.prepareBuild $
+      makePipeline
+        [ makeStep "First step" "busybox" ["date"]
+        ]
   result <- runner.runBuild emptyHooks build
 
   result.state `shouldBe` BuildFinished BuildSucceeded
   Map.elems result.completedSteps `shouldBe` [StepSucceeded]
+
+testYamlDecoding :: Runner.Service -> IO ()
+testYamlDecoding runner = do
+  pipeline <- Yaml.decodeFileThrow "test/pipeline.sample.yml"
+  build <- runner.prepareBuild pipeline
+  result <- runner.runBuild emptyHooks build
+  result.state `shouldBe` BuildFinished BuildSucceeded
 
 cleanupDocker :: IO ()
 cleanupDocker = void do
@@ -142,3 +152,5 @@ main = hspec do
       testLogCollection runner
     it "should pull images" do
       testImagePull runner
+    it "should decode pipelines" do
+      testYamlDecoding runner

@@ -1,12 +1,15 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Core where
 
+import Data.Aeson qualified as Aeson
 import Data.Time.Clock.POSIX qualified as Time
 import Docker qualified
 import RIO
@@ -18,14 +21,14 @@ import RIO.Text as Text hiding (concat)
 data Pipeline = Pipeline
   { steps :: NonEmpty Step
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Aeson.FromJSON)
 
 data Step = Step
   { name :: StepName,
     image :: Docker.Image,
     commands :: NonEmpty Text
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Aeson.FromJSON)
 
 data Build = Build
   { pipeline :: Pipeline,
@@ -59,7 +62,7 @@ data BuildResult
   deriving (Eq, Show)
 
 newtype StepName = StepName Text
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Show, Ord, Generic, Aeson.FromJSON)
 
 stepNameToText :: StepName -> Text
 stepNameToText (StepName step) = step
