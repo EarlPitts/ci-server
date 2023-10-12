@@ -61,6 +61,12 @@ data BuildResult
   | BuildUnexpectedState Text
   deriving (Eq, Show)
 
+newtype BuildNumber = BuildNumber Int
+  deriving (Eq, Show)
+
+buildNumberToInt :: BuildNumber -> Int
+buildNumberToInt (BuildNumber n) = n
+
 newtype StepName = StepName Text
   deriving (Eq, Show, Ord, Generic, Aeson.FromJSON)
 
