@@ -18,8 +18,16 @@ data Config = Config
 run :: Config -> JobHandler.Service -> IO ()
 run config handler =
   Scotty.scotty config.port do
+
     Scotty.post "/agent/pull" do
       cmd <- Scotty.liftAndCatchIO do
         handler.dispatchCmd
-
       Scotty.raw $ Serialise.serialise cmd
+
+    Scotty.post "/agent/send" do
+      msg <- Serialise.deserialise <$> Scotty.body
+
+      Scotty.liftAndCatchIO do
+        handler.processMsg msg
+
+      Scotty.json ("message processed" :: Text)
