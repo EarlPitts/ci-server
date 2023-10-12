@@ -1,8 +1,10 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 module Docker where
 
+import Codec.Serialise qualified as Serialise
 import Data.Aeson ((.:))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Types as Aeson.Types
@@ -14,15 +16,15 @@ import RIO.Text.Partial as Text.Partial
 import Socket qualified
 
 data Image = Image {name :: Text, tag :: Text}
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Serialise.Serialise)
 
 instance Aeson.FromJSON Image where
   parseJSON = Aeson.withText "parse-image" $ \image -> do
     case Text.Partial.splitOn ":" image of
       [name] ->
-        pure $ Image { name = name, tag = "latest" }
+        pure $ Image {name = name, tag = "latest"}
       [name, tag] ->
-        pure $ Image { name = name, tag = tag }
+        pure $ Image {name = name, tag = tag}
       _ ->
         fail $ "Image has too many colons " <> Text.unpack image
 
@@ -30,7 +32,7 @@ newtype ContainerExitCode = ContainerExitCode Int
   deriving (Eq, Show)
 
 newtype Volume = Volume Text
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Serialise.Serialise)
 
 data ContainerStatus
   = ContainerRunning
@@ -56,7 +58,7 @@ data CreateContainerOptions = CreateContainerOptions
   }
 
 newtype ContainerId = ContainerId Text
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Serialise.Serialise)
 
 data FetchLogsOptions = FetchLogsOptions
   { container :: ContainerId,

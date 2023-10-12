@@ -37,6 +37,8 @@ dependencies:
 - typed-process
 - time
 - yaml
+- scotty
+- serialise
 
 ghc-options:
 - -Wall

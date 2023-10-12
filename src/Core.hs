@@ -1,14 +1,15 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module Core where
 
+import Codec.Serialise qualified as Serialise
 import Data.Aeson qualified as Aeson
 import Data.Time.Clock.POSIX qualified as Time
 import Docker qualified
@@ -21,14 +22,14 @@ import RIO.Text as Text hiding (concat)
 data Pipeline = Pipeline
   { steps :: NonEmpty Step
   }
-  deriving (Eq, Show, Generic, Aeson.FromJSON)
+  deriving (Eq, Show, Generic, Aeson.FromJSON, Serialise.Serialise)
 
 data Step = Step
   { name :: StepName,
     image :: Docker.Image,
     commands :: NonEmpty Text
   }
-  deriving (Eq, Show, Generic, Aeson.FromJSON)
+  deriving (Eq, Show, Generic, Aeson.FromJSON, Serialise.Serialise)
 
 data Build = Build
   { pipeline :: Pipeline,
@@ -36,7 +37,7 @@ data Build = Build
     completedSteps :: Map StepName StepResult,
     volume :: Docker.Volume
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Serialise.Serialise)
 
 data StepResult
   = StepFailed Docker.ContainerExitCode
@@ -47,28 +48,28 @@ data BuildState
   = BuildReady
   | BuildRunning BuildRunningState
   | BuildFinished BuildResult
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Serialise.Serialise)
 
 data BuildRunningState = BuildRunningState
   { step :: StepName,
     container :: Docker.ContainerId
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Serialise.Serialise)
 
 data BuildResult
   = BuildSucceeded
   | BuildFailed
   | BuildUnexpectedState Text
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Serialise.Serialise)
 
 newtype BuildNumber = BuildNumber Int
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Serialise.Serialise)
 
 buildNumberToInt :: BuildNumber -> Int
 buildNumberToInt (BuildNumber n) = n
 
 newtype StepName = StepName Text
-  deriving (Eq, Show, Ord, Generic, Aeson.FromJSON)
+  deriving (Eq, Show, Ord, Generic, Aeson.FromJSON, Serialise.Serialise)
 
 stepNameToText :: StepName -> Text
 stepNameToText (StepName step) = step
@@ -152,7 +153,7 @@ data Log = Log
   { output :: ByteString,
     step :: StepName
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Serialise.Serialise)
 
 initLogCollection :: Pipeline -> LogCollection
 initLogCollection pipeline =
