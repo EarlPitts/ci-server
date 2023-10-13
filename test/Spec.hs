@@ -5,15 +5,19 @@
 
 module Main where
 
+import Agent qualified
+import Control.Concurrent.Async qualified as Async
 import Core
 import Data.Yaml qualified as Yaml
 import Docker qualified
+import JobHandler qualified
 import RIO
 import RIO.ByteString as ByteString
 import RIO.Map as Map
 import RIO.NonEmpty.Partial qualified as NonEmpty.Partial
 import RIO.Set qualified as Set
 import Runner qualified
+import Server qualified
 import System.Process.Typed qualified as Process
 import Test.Hspec
 
@@ -132,6 +136,44 @@ testYamlDecoding runner = do
   result <- runner.runBuild emptyHooks build
   result.state `shouldBe` BuildFinished BuildSucceeded
 
+checkBuild :: JobHandler.Service -> BuildNumber -> IO ()
+checkBuild handler number = loop
+  where
+    loop = do
+      Just job <- handler.findJob number
+      case job.state of
+        JobHandler.JobScheduled build -> do
+          case build.state of
+            BuildFinished s -> s `shouldBe` BuildSucceeded
+            _ -> loop
+        _ -> loop
+
+testServerAndAgent :: Runner.Service -> IO ()
+testServerAndAgent runner = do
+  let handler = undefined :: JobHandler.Service -- TODO
+  serverThread <- Async.async do
+    Server.run (Server.Config 9000) handler
+
+  Async.link serverThread
+
+  agentThread <- Async.async do
+    Agent.run (Agent.Config "http://localhost:9000") runner
+
+  Async.link agentThread
+
+  let pipeline =
+        makePipeline
+          [ makeStep "agent-test" "busybox" ["echo hello", "echo from agent"]
+          ]
+
+  number <- handler.queueJob pipeline
+  checkBuild handler number
+
+  Async.cancel serverThread
+  Async.cancel agentThread
+
+  pure ()
+
 cleanupDocker :: IO ()
 cleanupDocker = void do
   Process.readProcessStdout "docker rm -f $(docker ps -aq --filter \"label=quad\")"
@@ -154,3 +196,5 @@ main = hspec do
       testImagePull runner
     it "should decode pipelines" do
       testYamlDecoding runner
+    it "should run server and agent" do
+      testServerAndAgent runner
